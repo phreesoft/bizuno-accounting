@@ -3,11 +3,11 @@
  * Plugin Name: Bizuno Accounting/ERP/CRM
  * Plugin URI: https://www.phreesoft.com
  * Description: Bizuno is a powerful ERP/Accounting application adapted as a plugin for WordPress. Bizuno creates a portal running within the WordPress administrator. Once activated, click on the Bizuno menu item to complete the installation and access your Bizuno business.
- * Version: 7.0
+ * Version: 7.3.4
  * Requires at least: 6.5
  * Tested up to: 6.8.3
  * Requires PHP: 8.2
- * Requires Plugins: bizuno-wp-library:https://bizuno.com/downloads/wordpress/plugins/bizuno-wp-library
+ * Requires Plugins: bizuno:https://bizuno.com/downloads/wordpress/plugins/bizuno-wp-library
  * Author:      PhreeSoft, Inc.
  * Author URI:  http://www.PhreeSoft.com
  * Text Domain: bizuno
@@ -21,15 +21,15 @@ defined( 'ABSPATH' ) || exit;
 class bizuno_accounting
 {
     private $bizSlug   = 'bizuno';
-    private $bizLib    = "bizuno-wp-library";
-    private $bizLibURL = "https://bizuno.com/downloads/wordpress/plugins/bizuno-wp-library/bizuno-wp-library.latest-stable.zip";
+    private $bizLib    = "bizuno-wp";
+    private $bizLibURL = "https://bizuno.com/downloads/latest/bizuno.zip";
+    private $bizExists = false;
     
     public function __construct()
     {
         add_action ( 'init',                      [ $this, 'initializeBizuno' ] );
         add_action ( 'admin_init',                [ $this, 'initializeBizunoAdmin'], 5 );
         add_action ( 'admin_menu',                [ $this, 'admin_menu_bizuno' ] );
-        add_action ( 'admin_notices',             [ $this, 'admin_notices_bizuno' ] );
         add_action ( 'wp_before_admin_bar_render',[ $this, 'bizuno_admin_menu_mods' ] );
         add_action ( 'phpmailer_init',            [ $this, 'bizuno_phpmailer_init' ], 10, 1 );
         add_action ( 'template_redirect',         [ $this, 'bizunoPageRedirect' ] );
@@ -44,17 +44,16 @@ class bizuno_accounting
         register_uninstall_hook ( __FILE__,       'bizunoUninstall' ); // do not put inside of class
     }
 
-    /**
-     * Initializes the Bizuno library
-     */
     public function initializeBizuno()
     {
+        if ( ! is_plugin_active( "$this->bizLib/$this->bizLib.php" ) ) {
+            add_action( 'admin_notices', function() {
+                echo '<div class="notice notice-warning"><p>The Bizuno Accounting plugin now requires the Bizuno library plugin available from the Bizuno project website. Click <a href="https://dspind.com/wp-admin/admin.php?page=get-bizuno">HERE</a> to download the plugin!</p></div>';
+            });
+            return;
+        } else { $this->bizExists = true; }
         global $msgStack, $cleaner, $db, $io, $wpdb; // , $html5, $portal
         require_once ( plugin_dir_path( __FILE__ ) . 'portalCFG.php' ); // Set Bizuno environment
-        if ( !in_array ( "$this->bizLib/$this->bizLib.php", apply_filters( 'active_plugins', get_option ( 'active_plugins' ) ) ) ) {
-            return $this->deactivateBizuno();
-        }        
-        // Instantiate the Bizuno classes
         $msgStack = new \bizuno\messageStack();
         $cleaner  = new \bizuno\cleaner();
         $io       = new \bizuno\io();
@@ -62,30 +61,18 @@ class bizuno_accounting
         $this->verifyDbInstalled();
     }
 
-    public function initializeBizunoAdmin() {
-        if ( ! get_transient( 'bizuno_install_library' ) ) { return; }
-        delete_transient( 'bizuno_install_library' );
-        if ( ! current_user_can( 'install_plugins' ) || ! current_user_can( 'activate_plugins' ) ) { // Show a nice notice instead of dying
-            add_action( 'admin_notices', function() {
-                echo '<div class="notice notice-error"><p>Bizuno Accounting requires permission to install the required library plugin.</p></div>';
-            } );
-            return;
-        }
-        $this->bizuno_auto_install_library();
+    public function initializeBizunoAdmin()
+    {
     }
 
     public function admin_menu_bizuno()
     {
-        $library_main_file = WP_PLUGIN_DIR . "/$this->bizLib/$this->bizLib.php";
-        add_menu_page('Bizuno', 'Bizuno', 'manage_options', 'bizuno', 'bizuno_html', plugins_url( 'view/images/icon_16.png', $library_main_file ), 90);
-    }
-
-    public function admin_notices_bizuno() {
-        if ( get_transient( 'BIZUNO_FS_LIBRARY_auto_installed' ) ) {
-            echo '<div class="notice notice-success is-dismissible">';
-            echo '    <p>Bizuno Accounting: The required bizuno-wp-library was automatically downloaded and activated.</p>';
-            echo '</div>';
-            delete_transient( 'BIZUNO_FS_LIBRARY_auto_installed' );
+        if ( $this->bizExists ) {
+            add_menu_page( 'Bizuno', 'Bizuno', 'manage_options', 'bizuno', 'bizuno_html', 
+                plugins_url( 'icon_16.png', WP_PLUGIN_DIR . "/$this->bizLib/$this->bizLib.php" ), 90);            
+        } else {
+            add_menu_page( 'GET BIZUNO', 'GET BIZUNO', 'manage_options', 'get-bizuno', 'get_bizuno_html',
+                plugins_url( 'icon_16.png', WP_PLUGIN_DIR . "/bizuno-accounting/bizuno-accounting.php" ), 1);
         }
     }
 
@@ -96,6 +83,9 @@ class bizuno_accounting
     public function bizuno_admin_menu_mods()
     {
         global $wp_admin_bar;
+        if ( !in_array ( "$this->bizLib/$this->bizLib.php", apply_filters( 'active_plugins', get_option ( 'active_plugins' ) ) ) ) {
+            return;
+        }        
         if (empty(get_page_by_path($this->bizSlug))) { return; }
         $logout = $wp_admin_bar->get_node('logout');
         $wp_admin_bar->remove_node( 'logout' );
@@ -110,7 +100,7 @@ class bizuno_accounting
 
     public function bizunoPageRedirect() {
         global $post;
-        if ( is_user_logged_in() && !empty($post->post_name) && $this->bizSlug==$post->post_name) {
+        if ( is_user_logged_in() && !empty($post->post_name) && $this->bizSlug==$post->post_name && $this->bizExists) {
             new \bizuno\portalCtl();
             exit();
         }
@@ -118,12 +108,14 @@ class bizuno_accounting
 
     public function bizunoAjax()
     {
+        if ( !$this->bizExists ) { return; }
         new \bizuno\portalCtl();
         exit();
     }
 
     public function daily_cron()
     {
+        if ( !$this->bizExists ) { return; }
         \bizuno\periodAutoUpdate(false); // since function has been loaded
     }
 
@@ -147,81 +139,89 @@ class bizuno_accounting
         echo '</div>';
     }
 
-    private function bizuno_auto_install_library() {
-        $library_slug = "$this->bizLib/$this->bizLib.php";
-        $library_dir  = WP_PLUGIN_DIR . "/$this->bizLib";
-        if ( is_plugin_active( $library_slug ) ) { return; } // Already good?
-        
-        if ( file_exists( $library_dir . "/$this->bizLib.php" ) ) { // Installed but inactive?
-            activate_plugin( $library_slug, '', false, true ); // silent
-            return;
-        }
-        // Download + install silently
-        require_once ABSPATH . 'wp-admin/includes/file.php';
-        require_once ABSPATH . 'wp-admin/includes/plugin.php';
-        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
-        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader-skin.php';
-        $skin     = new class extends WP_Upgrader_Skin {
-            public function feedback($string, ...$args) {}
-            public function header() {}
-            public function footer() {}
-        };
-        $upgrader = new Plugin_Upgrader( $skin );
-        $upgrader->skin->plugin_info = [ 'Slug' => $this->bizLib ]; // This forces the correct folder name
-        $tmp = download_url( $this->bizLibURL );
-        if ( is_wp_error( $tmp ) ) {
-            error_log( 'Bizuno library download failed: ' . $tmp->get_error_message() );
-            return;
-        }
-        $result = $upgrader->install( $tmp, [ 'clear_destination' => true, 'clear_working' => true ] );
-        @unlink( $tmp );
-        if ( $result !== true ) {
-            error_log( 'Bizuno library install failed' );
-            return;
-        }
-        if ( ! is_dir( $library_dir ) ) { // Final safety net (almost never needed)
-            $dirs = glob( WP_PLUGIN_DIR . "/{$this->bizLib}*", GLOB_ONLYDIR );
-            foreach ( $dirs as $dir ) {
-                if ( basename( $dir ) !== $this->bizLib ) {
-                    rename( $dir, $library_dir );
-                    break;
-                }
-            }
-        }
-        if ( file_exists( $library_dir . "/$this->bizLib.php" ) ) { activate_plugin( $library_slug, '', false, true ); }
-    }
-
     public static function deactivate()
     {
         wp_clear_scheduled_hook('bizuno_daily_event');
-    }
-    
-    /**************** Private Methods *****************/
-    /*
-     * Deactivates this plugin since the library cannot be found
-     */
-    private function deactivateBizuno()
-    {
-        require_once ( ABSPATH . 'wp-admin/includes/plugin.php' );
-        $plugin_path = 'bizuno-accounting/bizuno-accounting.php';
-        if ( is_plugin_active( $plugin_path ) ) {
-            deactivate_plugins( $plugin_path );
-            echo '<div class="notice notice-info is-dismissible">';
-            echo '<p>The plugin bizuno-accounting has been deactivated because the Library plugin cannot be found! '
-            . 'Click <a href="#" target="_blank">HERE</a> to open a new page at the Bizuno.com website to download the Bizuno library. '
-            . 'Once downloaded, it must be manually installed the first time. '
-            . 'Henceforth, the standard WordPress upgrade process may be used to perform upgrades.</p>';
-            echo '</div>';
-        }
     }
 }
 new bizuno_accounting();
 
 /******************************* Operations outside of class ***************************/
+register_activation_hook( __FILE__, 'bizuno_schedule_library_install' );
+function bizuno_schedule_library_install()
+{
+//    set_transient( 'bizuno_install_library', true, 12 * HOUR_IN_SECONDS ); // Just schedule the real work for later — this runs safely
+    if ( ! wp_next_scheduled( 'bizuno_daily_event' ) ) { wp_schedule_event( time(), 'daily', 'bizuno_daily_event' ); }
+    // Create the placeholder page (this is safe during activation)
+    if ( ! get_page_by_path( 'bizuno' ) ) {
+        wp_insert_post( [ 'post_title' => 'Bizuno', 'post_name' => 'bizuno', 'post_status' => 'publish', 'post_type' => 'page',
+            'post_content' => "This page is reserved for authorized users of Bizuno Accounting/ERP.
+To access Bizuno, please <a href=\"/wp-login.php\">click here</a> to log into your WordPress site and select Bizuno Accounting from the profile menu in the upper right corner of the screen.
+If Bizuno Accounting is not an option, see your administrator to gain permission.</p>
+<p>Administrators: To authorize a user, navigate to the WordPress administration page -> Users -> search  username/eMail.
+Edit the user and check the \'Allow access to: <My Business>\' box along with a role and click Save.</p>"] );
+    }
+}
+
 function bizuno_html() {
     echo "<p>Please Note: This access method to Bizuno Accounting has deprecated!</p>";
     echo "<p>Bizuno Accounting now only runs in full screen mode to allow all users to use the app in a consistent environment.</p>";
     echo "<p>Permission must be granted by checking the 'Enable Bizuno Accounting' checkbox in each individual users profile. Once access has been granted, Bizuno Accounting can be accessed from the Users profile drop down menu after the user has logged into your site.</p>";
+}
+
+function get_bizuno_html()
+{
+    if (!current_user_can('manage_options')) { wp_die('Insufficient permissions'); }
+    echo '<div class="wrap">
+        <h1>Get Bizuno (Latest version from the Bizuno.com website)</h1>';
+        if (isset($_POST['bizuno_install_private'])) {
+            check_admin_referer('bizuno_install_private');
+            if (bizuno_install_and_activate_project_plugin()) {
+                // redirect to plugin main page
+            }
+        }
+        echo '<form method="post">';
+        wp_nonce_field('bizuno_install_private');
+        echo '<p>This will download and install the full Bizuno plugin from bizuno.com.</p>
+            <p><strong>No license key required</strong> – it’s now publicly available.</p>';
+        submit_button('Get Bizuno Now', 'primary', 'bizuno_install_private');
+        echo '</form></div>';
+}
+
+function bizuno_install_and_activate_project_plugin() {
+    if ( is_plugin_active('bizuno/bizuno.php' ) ) {
+        echo '<div class="updated"><p>Bizuno ERP is already installed and active!</p></div>';
+        return;
+    }
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+    require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+    $download_url = 'https://bizuno.com/downloads/latest/bizuno-wp.zip';
+    $tmp_file = download_url($download_url);
+    if (is_wp_error($tmp_file)) {
+        echo '<div class="error"><p>Failed to download Bizuno: ' . esc_html($tmp_file->get_error_message()) . '</p></div>';
+        return;
+    }
+    $upgrader = new Plugin_Upgrader(new WP_Upgrader_Skin());
+    $installed = $upgrader->install($tmp_file, ['overwrite_package' => true]);
+    @unlink($tmp_file); // clean up temp file
+    if (!$installed || is_wp_error($installed)) {
+        echo '<div class="error"><p>Installation failed.</p></div>';
+        return;
+    }
+    $plugin_path = '/bizuno-wp/bizuno-wp.php';
+    if ( file_exists( WP_PLUGIN_DIR . $plugin_path ) ) { 
+        $activated = activate_plugin( $plugin_path, '', false, true );
+        if (is_wp_error($activated)) {
+            echo '<div class="error"><p>Installed but failed to activate: ' . esc_html($activated->get_error_message()) . '</p></div>';
+        } else {
+            echo '<div class="updated"><p><strong>Bizuno ERP has been successfully installed and activated!</strong></p>';
+            echo '<p><a href="' . admin_url('admin.php?page=bizuno') . '" class="button button-primary">Go to Bizuno Dashboard →</a></p></div>';
+        }
+        return true;
+    }
+    echo '<div class="error"><p>Failed to activate Bizuno!</p></div>';
 }
 
 /**
@@ -246,20 +246,4 @@ function bizunoRmdir($dir) {
         if (is_dir($dir."/".$object)) { bizunoRmdir($dir."/".$object); } else { unlink($dir."/".$object);  }
     }
     rmdir($dir);
-}
-
-register_activation_hook( __FILE__, 'bizuno_schedule_library_install' );
-function bizuno_schedule_library_install()
-{
-    set_transient( 'bizuno_install_library', true, 12 * HOUR_IN_SECONDS ); // Just schedule the real work for later — this runs safely
-    if ( ! wp_next_scheduled( 'bizuno_daily_event' ) ) { wp_schedule_event( time(), 'daily', 'bizuno_daily_event' ); }
-    // Create the placeholder page (this is safe during activation)
-    if ( ! get_page_by_path( 'bizuno' ) ) {
-        wp_insert_post( [ 'post_title' => 'Bizuno', 'post_name' => 'bizuno', 'post_status' => 'publish', 'post_type' => 'page',
-            'post_content' => "This page is reserved for authorized users of Bizuno Accounting/ERP.
-To access Bizuno, please <a href=\"/wp-login.php\">click here</a> to log into your WordPress site and select Bizuno Accounting from the profile menu in the upper right corner of the screen.
-If Bizuno Accounting is not an option, see your administrator to gain permission.</p>
-<p>Administrators: To authorize a user, navigate to the WordPress administration page -> Users -> search  username/eMail.
-Edit the user and check the \'Allow access to: <My Business>\' box along with a role and click Save.</p>"] );
-    }
 }

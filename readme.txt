@@ -3,7 +3,7 @@ Contributors:      phreesoft
 Tags:              erp, accounting, bookkeeping, crm, quickbooks, woocommerce, e-commerce, cart, phreebooks, bizuno, inventory control
 Requires at least: 5.3
 Tested up to:      6.4.3
-Stable tag:        6.7.8.2
+Stable tag:        7.3.4
 License:           GPL3
 License URI:       https://www.gnu.org/licenses/gpl.html
 
@@ -68,6 +68,8 @@ No User action is needed. The script includes and auto-update feature for any da
 
 == Changelog ==
 
+= 7.3.4 = 
+2025-12-07 - Major update to new architecture. This plugin is now a portal and will require the download of the full Bizuno library from the project website.
 = 6.7.8.2 = 
 2024-07-14 - Bug handling Javascript title.
 = 6.7.8 = 
