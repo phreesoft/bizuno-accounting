@@ -22,11 +22,12 @@ class bizuno_accounting
 {
     private $bizSlug   = 'bizuno';
     private $bizLib    = "bizuno-wp";
-    private $bizLibURL = "https://bizuno.com/downloads/latest/bizuno.zip";
+    private $bizLibURL = "https://bizuno.com/downloads/latest/bizuno-wp.zip";
     private $bizExists = false;
     
     public function __construct()
     {
+        // Actions
         add_action ( 'init',                      [ $this, 'initializeBizuno' ] );
         add_action ( 'admin_init',                [ $this, 'initializeBizunoAdmin'], 5 );
         add_action ( 'admin_menu',                [ $this, 'admin_menu_bizuno' ] );
@@ -46,7 +47,7 @@ class bizuno_accounting
 
     public function initializeBizuno()
     {
-        if ( ! is_plugin_active( "$this->bizLib/$this->bizLib.php" ) ) {
+        if ( !is_plugin_active( "$this->bizLib/$this->bizLib.php" ) || !file_exists( WP_PLUGIN_DIR . '/' . "$this->bizLib/$this->bizLib.php" ) ) {
             add_action( 'admin_notices', function() {
                 echo '<div class="notice notice-warning"><p>The Bizuno Accounting plugin now requires the Bizuno library plugin available from the Bizuno project website. Click <a href="https://dspind.com/wp-admin/admin.php?page=get-bizuno">HERE</a> to download the plugin!</p></div>';
             });
@@ -54,6 +55,7 @@ class bizuno_accounting
         } else { $this->bizExists = true; }
         global $msgStack, $cleaner, $db, $io, $wpdb; // , $html5, $portal
         require_once ( plugin_dir_path( __FILE__ ) . 'portalCFG.php' ); // Set Bizuno environment
+        if ( !defined( 'BIZUNO_URL_VIEW' ) ) { define( 'BIZUNO_URL_VIEW', WP_PLUGIN_URL . "/$this->bizLib" );  } // contains Bizuno images, icons, css and js
         $msgStack = new \bizuno\messageStack();
         $cleaner  = new \bizuno\cleaner();
         $io       = new \bizuno\io();
@@ -135,7 +137,7 @@ class bizuno_accounting
         echo '<div class="notice notice-info is-dismissible">';
         echo '<p>You\'re just about ready to get started managing your business! '
         . 'Click <a href="'.home_url("/$this->bizSlug").'" target="_blank">HERE</a> to open a new page at your website to run the database installer script. '
-        . 'Remember to bookmark this page so you can quickly access your Bizuno business in the future.</p>';
+        . 'Remember to bookmark the page so you can quickly access your Bizuno business in the future.</p>';
         echo '</div>';
     }
 
@@ -176,9 +178,7 @@ function get_bizuno_html()
         <h1>Get Bizuno (Latest version from the Bizuno.com website)</h1>';
         if (isset($_POST['bizuno_install_private'])) {
             check_admin_referer('bizuno_install_private');
-            if (bizuno_install_and_activate_project_plugin()) {
-                // redirect to plugin main page
-            }
+            if (bizuno_install_and_activate_project_plugin()) { return; }
         }
         echo '<form method="post">';
         wp_nonce_field('bizuno_install_private');
@@ -197,7 +197,7 @@ function bizuno_install_and_activate_project_plugin() {
     require_once ABSPATH . 'wp-admin/includes/plugin.php';
     require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
     require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
-    $download_url = 'https://bizuno.com/downloads/latest/bizuno-wp.zip';
+    $download_url = 'https://bizuno.com/downloads/latest/bizuno-wp.zip'; // bizLibURL is inside the class so re-define locally
     $tmp_file = download_url($download_url);
     if (is_wp_error($tmp_file)) {
         echo '<div class="error"><p>Failed to download Bizuno: ' . esc_html($tmp_file->get_error_message()) . '</p></div>';
@@ -217,7 +217,7 @@ function bizuno_install_and_activate_project_plugin() {
             echo '<div class="error"><p>Installed but failed to activate: ' . esc_html($activated->get_error_message()) . '</p></div>';
         } else {
             echo '<div class="updated"><p><strong>Bizuno ERP has been successfully installed and activated!</strong></p>';
-            echo '<p><a href="' . admin_url('admin.php?page=bizuno') . '" class="button button-primary">Go to Bizuno Dashboard →</a></p></div>';
+            echo '<p><a href="' . home_url("/bizuno") . '" class="button button-primary" target="_blank">Go to Bizuno Dashboard →</a></p></div>'; // bizSlug is inside the class so re-define locally
         }
         return true;
     }
